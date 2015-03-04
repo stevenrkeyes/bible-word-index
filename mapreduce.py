@@ -150,6 +150,41 @@ class WordCount(MapReduce):
     def Reduce(self, key, keyvalues):
         return (key, sum(pair[1] for pair in keyvalues))
 
+class ReverseIndex(MapReduce):
+    
+    def __init__(self, maptask, reducetask, path):
+        # call the parent to initialize the object and split the input
+        MapReduce.__init__(self, maptask, reducetask, path)
+    
+    # keyvalue is the letter index at which the chunking of text starts
+    # value is the text itself
+    def Map(self, keyvalue, value):
+        # an array to store the (word, [indexes...]) results
+        results = []
+        # i is index of the current letter we are reading
+        # relative to the start of the chunk
+        i = 0
+        n = len(value)
+        while i < n:
+            # skip non-ascii letters in C/C++ style a la MapReduce paper:
+            while i < n and value[i] not in string.ascii_letters:
+                i += 1
+            start = i
+            while i < n and value[i] in string.ascii_letters:
+                i += 1
+            w = value[start:i]
+            # check if we have found a word; check that it has length
+            if start < i and w.istitle():
+                # append the index of where we found the word
+                # with the absolute index being the sum of the
+                # relative index of the start of the word and the
+                # index of this chunk
+                results.append ((w.lower(), int(keyvalue) + start))
+        return results
+    
+    def Reduce(self, key, keyvalues):
+        return (key, [pair[1] for pair in keyvalues])
+
 # Python doesn't pickle method instance by default, so here you go:
 def _pickle_method(method):
     func_name = method.im_func.__name__
@@ -186,6 +221,19 @@ if __name__ == '__main__':
   out = sorted(out, key=lambda pair: pair[1], reverse=True)
   # Print top 20:
   print "WordCount:"
+  for pair in out[0:20]:
+      print pair[0], pair[1]
+
+  # Create a ReverseIndex MapReduce program
+  ri = ReverseIndex(4, 2, sys.argv[1])
+  # Run it
+  ri.run()
+  # Merge out of Reduce tasks:
+  out = ri.Merge()
+  # Sort by word count:
+  out = sorted(out, key=lambda pair: pair[0])
+  # Print top 20:
+  print "ReverseIndex:"
   for pair in out[0:20]:
       print pair[0], pair[1]
 
